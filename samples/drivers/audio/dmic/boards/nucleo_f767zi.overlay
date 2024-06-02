@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) 2024 Charlie Gilliland
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+    /* This section would be in the chip's dtsi file
+       along with all the other peripherals.
+       These are configurations that might vary chip to chip,
+       but are constant for this chip.
+       User configurations such as pins, dma, etc.
+       would be in the board's dts file, or in a board overlay. */
+
+    dfsdm0: dfsdm@40017400 {
+        compatible = "st,stm32-dfsdm";
+        #address-cells = <1>;
+        #size-cells = <0>;
+        reg = <0x40017400 0x400>;      // This comes from the reference manual, will be different for other MCUs
+        clocks = <&rcc STM32_CLOCK_BUS_APB2 STM32_CLOCK(0, 1, 25, DCKCFGR1_REG)>; // Default (reset state) is APB2 aka PCLK2
+        // TODO: the default audio clock would also be configured here
+        interrupts = <99 0>, <100 0>, <101 0>, <102 0>;
+        // TODO: reset ??? RM0410 p.181
+    };
+
+};
+
+dmic_dev: &dfsdm0 {
+    status = "okay";
+    audio-clock = <&pllsai1>; // TODO: plli2s, pllsai1, and pllsai2 are not implemented for the f7, so we can't choose an audio clock yet...
+
+    mic_l: mic@0 {
+        compatible = "st,dfsdm-chan";
+        pinctrl-0 = <&dfsdm1_datin6_pf13,
+                     &dfsdm1_ckout_pe9>;
+        pinctrl-names = "default";
+        dmas = <&dma2 4 8 0x12A80 0x03>;    // DMA Channel and Stream come from the reference manual. But do we really need to configure the whole thing here?
+        sample-edge = "rising";
+    };
+
+    mic_r: mic@1 {
+        compatible = "st,dfsdm-chan";
+        pinctrl-0 = <&dfsdm1_datin6_pf13,
+                     &dfsdm1_ckout_pe9>;
+        pinctrl-names = "default";
+        dmas = <&dma2 5 8 0x12A80 0x03>;
+        sample-edge = "falling";
+    };
+
+    /* We can have up to 4 mics in a single DFSDM instance.
+       Two mics can share the same data pin by sampling on either rising/falling edge of clock,
+       or each mic can use its own data pin, optionally sampling on either rising/falling edge of clock.
+       
+       Unsure whether a single DMA channel can handle multiple PCM output channels.
+       But for sure, each PCM output can have its own DMA channel.
+       */
+
+    /*
+    mic_2: mic@2 {
+        compatible = "st,dfsdm-chan";
+        pinctrl-0 = <>;
+        pinctrl-names = "default";
+        sample-edge = "rising";
+        dmas = <>;                         // TODO: dummy
+    };
+
+    mic_3: mic@3 {
+        compatible = "st,dfsdm-chan";
+        pinctrl-0 = <>;
+        pinctrl-names = "default";
+        sample-edge = "falling";
+        dmas = <>;                         // TODO: dummy
+    };
+    */
+};

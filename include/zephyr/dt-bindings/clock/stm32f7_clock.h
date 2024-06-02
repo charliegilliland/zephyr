@@ -37,6 +37,14 @@
 /** Peripheral bus clock */
 #define STM32_SRC_PCLK		(STM32_SRC_PLL_R + 1)
 
+/** PLLI2S clock outputs */
+#define STM32_SRC_PLLI2S_P	()
+#define STM32_SRC_PLLI2S_Q	()
+#define STM32_SRC_PLLI2S_R	()
+/** PLLSAI clock outputs */
+#define STM32_SRC_PLLSAI_P	()
+#define STM32_SRC_PLLSAI_Q	()
+#define STM32_SRC_PLLSAI_R	()
 
 #define STM32_CLOCK_REG_MASK    0xFFU
 #define STM32_CLOCK_REG_SHIFT   0U

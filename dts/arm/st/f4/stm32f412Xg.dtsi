@@ -18,5 +18,57 @@
 				reg = <0x08000000 DT_SIZE_K(1024)>;
 			};
 		};
+		dfsdm0: dfsdm@40016000 {
+			compatible = "st,stm32-dfsdm";
+			status = "disabled";
+			// this binding would live in dts/bindings/misc and define the children bindings as well...
+			// but it does not have its own driver source code, so the other drivers would reference these nodes as phandles
+	
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0x40016000 0x400>;
+
+			clocks = <&rcc STM32_CLOCK_BUS_APB2 STM32_CLOCK(0, 1, 31, 0x8C)>,   // DFSDM kernel clock: Default PCLK2 (0), or SYSCLK (1)
+			/*<&rcc STM32_SRC_PLLI2S_R STM32_CLOCK(0, 3, 25, 0x8C)>,*/   // TODO: do we need to set PLLI2S1 to PLLI2S_R here, or is that done somewhere else???
+			<&rcc NO_SEL STM32_CLOCK(0, 1, 15, 0x8C)>;                 // DFSDM audio clock: Default PLLI2S1 (0), or PLLI2S2 (1)
+
+			#dfsdm-config-cells = <2>;
+
+			channel0: channel@0 {
+				compatible = "st,dfsdm-chan";
+				reg = <0x00>;
+				status = "disabled";
+			};
+	
+			channel1: channel@20 {
+				compatible = "st,dfsdm-chan";
+				reg = <0x20>;
+				status = "disabled";
+			};
+	
+			channel2: channel@40 {
+				compatible = "st,dfsdm-chan";
+				reg = <0x40>;
+				status = "disabled";
+			};
+	
+			channel3: channel@60 {
+				compatible = "st,dfsdm-chan";
+				reg = <0x60>;
+				status = "disabled";
+			};
+	
+			filter0: filter@100 {
+				compatible = "st,dfsdm-filt";
+				reg = <0x100>;
+				status = "disabled";
+			};
+	
+			filter1: filter@180 {
+				compatible = "st,dfsdm-filt";
+				reg = <0x180>;
+				status = "disabled";
+			};
+		};
 	};
 };

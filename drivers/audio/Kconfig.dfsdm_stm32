@@ -1,0 +1,22 @@
+# STM32 DFSDM driver configuration options
+
+# Copyright (c) 2024 Charlie Gilliland
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig AUDIO_DFSDM_STM32
+	bool "STM32 MCU DMIC (DFSDM) controller driver"
+	default y
+	depends on DT_HAS_ST_STM32_DFSDM_ENABLED
+	depends on DT_HAS_ST_STM32_DFSDM_DMIC_ENABLED
+#	select CACHE_MANAGEMENT if CPU_HAS_DCACHE
+	select DMA
+#	select DMA_STM32
+	select PINCTRL
+	select GPIO
+#	select PINCTRL_STM32
+	help
+	  Enable DMIC support on the STM32 family of processors.
+
+#if AUDIO_DFSDM_STM32
+# TODO: some options about DMA buffers - see Kconfig.dmic_mcux
+#endif # AUDIO_DFSDM_STM32
