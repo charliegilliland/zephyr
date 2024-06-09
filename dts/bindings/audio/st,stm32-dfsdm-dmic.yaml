@@ -8,12 +8,73 @@ compatible: "st,stm32-dfsdm-dmic"
 include: [base.yaml, pinctrl-device.yaml]
 
 properties:
+  "#address-cells":
+    required: true
+    const: 1
+
+  "#size-cells":
+    required: true
+    const: 0
+
+  reg:
+    required: true
+
+  clocks:
+    required: true
+
+  clock-names:
+    required: true
+
+#  resets:
+#    required: true
+
   pinctrl-0:
       required: true
 
   pinctrl-names:
       required: true
 
-  dfsdm-configs:
-    required: true
-    type: phandle-array
+child-binding:
+  description: |
+    STM32 DFSDM filter configuration.
+  
+  include: base.yaml
+
+  compatible: "st,dfsdm-filt"
+
+  properties:
+    dmas:
+      required: true
+
+#    interrupts:
+#      required: true
+
+    st,adc-channels:
+      type: int
+      required: true
+
+    # TODO: st,adc-channel-names
+
+    st,sample-edge:
+      type: string
+      required: true
+      enum:
+        - "rising"
+        - "falling"
+
+    st,adc-channel-clk-src:
+      type: string
+      required: true
+      # TODO: enum
+
+    st,adc-alt-channel:
+      type: int
+      default: 0
+
+    st,filter-order:
+      type: int
+      required: true
+      # TODO: enum
+  
+    # TODO: there are probably more... refer to linux bindings...
+    # TODO: right shift...

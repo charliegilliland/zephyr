@@ -7,154 +7,40 @@
 &dma2 {
     status = "okay";
 };
-
+/*
 &pinctrl {
     status = "okay";
 };
-
+*/
 &gpioe {
     status = "okay";
 };
 
-&dfsdm0 {
-    compatible = "st,stm32-dfsdm";
-    status = "okay";
-    // this binding would live in dts/bindings/misc and define the children bindings as well...
-    // but it does not have its own driver source code, so the other drivers would reference these nodes as phandles
-
-
-    //#reset-cells = <1>;
-    //resets = <&rctl STM32_RESET(ABP2, 24U)>;
-    //interrupts = <61 0>, <62 0>; // TODO: might not even need these...
-    //interrupt-names = "ch0", "ch1";
-    //max-channels = <2>;
-
-
-    // TODO: need to specify the audio clock here... phandle or clocks ???
-    // TODO: maybe the audio clock could be in the specific driver's node properties... see below
-
-    channel2: channel@40 {
-        compatible = "st,dfsdm-chan";
-        sample-edge = "falling";        // sample on the falling edge of the clock
-        status = "okay";
-    };
-
-    channel3: channel@60 {
-        compatible = "st,dfsdm-chan";
-        sample-edge = "rising";         // sample on the rising edge of the clock
-        output-clk-en;                  // enable clock output on ckout pin
-        status = "okay";
-    };
-
-    filter0: filter@100 {
-        compatible = "st,dfsdm-filt";
-        // User specifies the DMA (or interrupt) info in their overlay
-        // and int enum filter-order
-        // and bool fast-mode ??
-        dmas = <&dma2 0 7 0x12A80 0x03>;
-        status = "okay";
-    };
-
-    filter1: filter@180 {
-        compatible = "st,dfsdm-filt";
-        dmas = <&dma2 1 3 0x12A80 0x03>;
-        status = "okay";
-    };
-};
-
-
-/ {
-    dmic_dev: dmic_dev {
-        compatible = "st,stm32-dfsdm-dmic";
-        status = "okay";
-    
-        // User has already set up dma above
-        pinctrl-0 = <&dfsdm1_datin3_pe4 &dfsdm1_ckout_pe9>;
-        pinctrl-names = "default";
-        
-        // Now, all the user has to do is reference the dfsdm inst here
-        dfsdm-configs = <&dfsdm0 2 0>, <&dfsdm0 3 1>; // <[dfsdm phandle] [channel index] [filter index]>
-
-        // potentially the audio clock would be specified here ???
-        
-        /* With these channel arrays, we can go get a reference for a specific child node (chan or filt)
-        by using macro get_child_by_name and the index given here.
-        that also means we could combine channels from multiple dfsdm instances into the same dmic driver instance !!! */
-    };
-};
-
-
-
-/*
-// application-specific overlay, which configures the details of channels / filters
-&dfsdm0 {
-    channel2 {
-        pinctrl-0 = <&dfsdm1_datin3_pe4 &dfsdm1_ckout_pe9>;
-        pinctrl-names = "following";    // use the following channel's data pin
-        sample-edge = "falling";        // sample on the falling edge of the clock
-    };
-
-    channel3 {
-        pinctrl-0 = <&dfsdm1_datin3_pe4 &dfsdm1_ckout_pe9>;
-        pinctrl-names = "same";         // use this channel's data pin
-        sample-edge = "rising";         // sample on the rising edge of the clock
-        output-clk-en;                  // enable clock output on ckout pin
-    };
-
-    filter0 {
-        dmas = <&dma2 0 7 0x12A80 0x03>;
-    };
-
-    filter1 {
-        dmas = <&dma2 1 3 0x12A80 0x03>;    
-    };
-};
-*/
-
-
-
-
-
-// or for adc
-
-/*
-sd_adc: sd_adc {
-    compatible = "st,stm32-dfsdm-adc";
-
-    // TODO: probably some ADC-specific properties would need to be here
-    // as well as the phandle arrays to the dfsdm instance, channel index, and filter index
-
-};
-*/
-
-/*
-// this was my first attempt...
 dmic_dev: &dfsdm0 {
     status = "okay";
-    //audio-clock = <&plli2s1>; // TODO: i don't know if this needs to go here...
-                              // But the driver needs to be able to figure out its audio clock frequency, so it will need to know the clock mux configuration...
 
-    mic_l: mic_l {
-        compatible = "st,dfsdm-chan";
-        pinctrl-0 = <&dfsdm1_datin2_pe7 &dfsdm1_ckout_pe9>;
-        pinctrl-names = "default";
-        dmas = <&dma2 0 7 0x12A80 0x03>;
-        //dmas = <&dma2 0 7>;
-        sample-edge = "rising";
-        //right-shift = <8>; // TODO: property for right shift after sample conversion
+    pinctrl-0 = <&dfsdm1_datin3_pe4 &dfsdm1_ckout_pe9>;
+    pinctrl-names = "default";
+    clocks = <&rcc STM32_CLOCK_BUS_APB2 STM32_CLOCK(0, 1, 31, 0x8C)>,   // DFSDM kernel clock: Default PCLK2 (0), or SYSCLK (1)
+             <&rcc NO_SEL STM32_CLOCK(0, 1, 15, 0x8C)>;                 // DFSDM audio clock: Default PLLI2S1 (0), or PLLI2S2 (1)
+    clock-names = "dfsdm", "audio";
+
+    filter0: filter@0 {
+        compatible = "st,dfsdm-filt";
+        st,adc-channels = <3>;
+        st,sample-edge = "rising";
+        st,adc-channel-clk-src = "CLKOUT";
+        st,filter-order = <3>;
         status = "okay";
     };
 
-    mic_r: mic_r {
-        compatible = "st,dfsdm-chan";
-        pinctrl-0 = <&dfsdm1_datin2_pe7 &dfsdm1_ckout_pe9>;
-        pinctrl-names = "default";
-        dmas = <&dma2 1 3 0x12A80 0x03>;
-        //dmas = <&dma2 1 3>;
-        sample-edge = "falling";
+    filter1: filter@1 {
+        compatible = "st,dfsdm-filt";
+        st,adc-channels = <2>;
+        st,sample-edge = "falling";
+        st,adc-channel-clk-src = "CLKOUT";
+        st,filter-order = <3>;
+        st,adc-alt-channel = <1>; // following channel's pin
         status = "okay";
     };
-
-    // Need to check with each MCU for max number of output channels.
 };
-*/

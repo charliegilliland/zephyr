@@ -6,13 +6,13 @@
 menuconfig AUDIO_DFSDM_STM32
 	bool "STM32 MCU DMIC (DFSDM) controller driver"
 	default y
-	depends on DT_HAS_ST_STM32_DFSDM_ENABLED
 	depends on DT_HAS_ST_STM32_DFSDM_DMIC_ENABLED
 #	select CACHE_MANAGEMENT if CPU_HAS_DCACHE
 	select DMA
+	select USE_STM32_HAL_DFSDM
 #	select DMA_STM32
-	select PINCTRL
-	select GPIO
+#	select PINCTRL
+#	select GPIO
 #	select PINCTRL_STM32
 	help
 	  Enable DMIC support on the STM32 family of processors.
