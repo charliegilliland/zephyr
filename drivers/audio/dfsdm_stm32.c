@@ -58,8 +58,12 @@ struct dfsdm_stm32_chan_cfg {
 struct dfsdm_stm32_drv_data {
 
 	// TODO: stuff like buffers, k_msg_q, other runtime data will be stored in here
+	struct k_mem_slab *mem_slab;
+	uint32_t block_size;
 
-	int dummy;
+	uint8_t act_num_channels;
+
+	enum dmic_state dmic_state;
 };
 
 struct dfsdm_stm32_drv_cfg {
@@ -247,10 +251,38 @@ static int dfsdm_channel_init(struct dfsdm_stm32_chan_cfg *chan_cfg)
 /* Driver Initialization Function */
 static int dfsdm_stm32_init(const struct device *dev)
 {
-	const struct dfsdm_stm32_drv_cfg *cfg = dev->config;
 	int ret;
+	const struct dfsdm_stm32_drv_cfg *cfg = dev->config;
+	const struct device *clk;
 
-	// TODO: clock stuff
+	clk = DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE);
+	if (!device_is_ready(clk)) {
+		LOG_ERR("clock control device not ready");
+		return -ENODEV;
+	}
+
+	// Enable DFSDM Peripheral Clock
+	ret = clock_control_on(clk, (clock_control_subsys_t)&cfg->pclken[0]);
+	if (ret != 0) {
+		LOG_ERR("Could not enable DFSDM clock");
+		return -EIO;
+	}
+
+	// TODO: is this good here ?? I think this is where DFSDM audio clock selection happens? (choose from multiple plli2s options)
+	if (cfg->pclk_len > 1) {
+		ret = clock_control_configure(clk,
+					      (clock_control_subsys_t)&cfg->pclken[1],
+					      NULL);
+		if (ret < 0) {
+			LOG_ERR("Could not configure I2S domain clock");
+			return -EIO;
+		}
+	}
+	// TODO: will probably end up needing another devicetree phandle that points to the exact plli2s clock controller node
+	// then from there we will set up clock frequency via multipliers and dividers
+
+	// or, do we simply require the user to set up the appropriate mul/div in devicetree
+	// and report when pcm_rate can't be achieved with the provided clock
 
 	// Configure pins
 	ret = pinctrl_apply_state(cfg->pcfg, PINCTRL_STATE_DEFAULT);
@@ -259,9 +291,8 @@ static int dfsdm_stm32_init(const struct device *dev)
 		return ret;
 	}
 
-	// TODO: DMA stuff ?
-
-	// TODO: any DFSDM instance initialization to do here??? not just channel / filter init ???
+	// TODO: any DFSDM channel config stuff that couldn't be done at compile time
+	// aka leftover stuff that I couldn't figure out by macros
 
 	if (cfg->dfsdm_base_addr == DFSDM1_BASE) {
 		for (int i = 0; i < cfg->num_channels; i++) {
@@ -276,17 +307,6 @@ static int dfsdm_stm32_init(const struct device *dev)
 	}
 #endif /* DFSDM2_BASE */
 
-	for (int i = 0; i < cfg->num_channels; i++) {
-		ret = dfsdm_channel_init(cfg->channels[i]);
-		if (ret != HAL_OK) {
-			LOG_ERR("dfsdm_channel_init failed");
-			return 0;
-		}
-	}
-
-	// TODO: link DMA to DFSDM ??
-
-
 	return 0;
 }
 
@@ -298,7 +318,46 @@ TODO: API implementation functions
 */
 static int dfsdm_stm32_configure(const struct device *dev, struct dmic_cfg *config)
 {
-    // TODO: dummy return value
+	int ret;
+	struct dfsdm_stm32_drv_cfg const *cfg = dev->config;
+	struct dfsdm_stm32_drv_data *data = dev->data;
+	struct pdm_chan_cfg *pdm_chan = &(config->channel);
+	struct pcm_stream_cfg *pdm_streams = config->streams;
+
+	uint32_t min_clk = config->io.min_pdm_clk_freq;
+	uint32_t max_clk = config->io.max_pdm_clk_freq;
+
+	if (pdm_chan->req_num_chan > cfg->num_channels) {
+		LOG_ERR("Requested %d channels but only %d configured in devicetree", pdm_chan->req_num_chan, cfg->num_channels);
+		return -ENOTSUP;
+	}
+
+
+
+	/*
+	
+	 - CLOCK configuration, divider, oversample, right shift?
+
+	 - DMA stream configuration ??
+
+	*/
+
+	// TODO: this probably won't actually work like this...
+	// TODO: User might request a channel map that doesn't use all available channels
+	data->act_num_channels = pdm_chan->req_num_chan;
+	for (int i = 0; i < data->act_num_channels; i++) {
+		ret = dfsdm_channel_init(cfg->channels[i]);
+		if (ret != HAL_OK) {
+			LOG_ERR("dfsdm_channel_init failed");
+			return 0;
+		}
+	}
+	// TODO: link DMA to DFSDM ??
+
+
+	data->mem_slab = pdm_streams->mem_slab;
+	data->block_size = pdm_streams->block_size;
+	data->dmic_state = DMIC_STATE_CONFIGURED;
     return 0;
 }
 
@@ -314,6 +373,7 @@ static int dfsdm_stm32_trigger(const struct device *dev, enum dmic_trigger cmd)
 	case DMIC_TRIGGER_RELEASE:
 	case DMIC_TRIGGER_START:
 		break;
+	case DMIC_TRIGGER_RESET:
 	default:
 		LOG_ERR("Invalid command: %d", cmd);
 		return -EINVAL;
@@ -371,7 +431,7 @@ static const struct _dmic_ops dmic_ops = {
 	DFSDM_CHANNELS_DEFINE(idx) \
 	PINCTRL_DT_INST_DEFINE(idx); \
 	static struct dfsdm_stm32_drv_data dfsdm_stm32_drv_data##idx = { \
-		.dummy = 0, \
+		.dmic_state = DMIC_STATE_UNINIT, \
 	}; \
 	static const struct stm32_pclken clk_##idx[] = \
 				 STM32_DT_INST_CLOCKS(idx); \
