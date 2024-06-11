@@ -216,7 +216,7 @@ static int dfsdm_channel_init(struct dfsdm_stm32_chan_cfg *chan_cfg)
 	__HAL_DFSDM_FILTER_RESET_HANDLE_STATE(hdfsdm_filter);
 	
 	hdfsdm_filter->Instance = get_hal_filter_instance(chan_cfg->dfsdm_inst, chan_cfg->filter);
-	hdfsdm_filter->Init.RegularParam.Trigger = DFSDM_FILTER_SW_TRIGGER;
+	hdfsdm_filter->Init.RegularParam.Trigger = DFSDM_FILTER_SW_TRIGGER; // or SYNC_TRIGGER ???
 	hdfsdm_filter->Init.RegularParam.FastMode = ENABLE;
 	hdfsdm_filter->Init.RegularParam.DmaMode = ENABLE;
 
@@ -261,14 +261,16 @@ static int dfsdm_stm32_init(const struct device *dev)
 		return -ENODEV;
 	}
 
-	// Enable DFSDM Peripheral Clock
+	// Enable DFSDM Kernel Clock
 	ret = clock_control_on(clk, (clock_control_subsys_t)&cfg->pclken[0]);
 	if (ret != 0) {
 		LOG_ERR("Could not enable DFSDM clock");
 		return -EIO;
 	}
 
-	// TODO: is this good here ?? I think this is where DFSDM audio clock selection happens? (choose from multiple plli2s options)
+	// TODO: i should get these clock phandles by name
+
+	// Configure I2S1 clock source
 	if (cfg->pclk_len > 1) {
 		ret = clock_control_configure(clk,
 					      (clock_control_subsys_t)&cfg->pclken[1],
@@ -278,11 +280,19 @@ static int dfsdm_stm32_init(const struct device *dev)
 			return -EIO;
 		}
 	}
-	// TODO: will probably end up needing another devicetree phandle that points to the exact plli2s clock controller node
-	// then from there we will set up clock frequency via multipliers and dividers
 
-	// or, do we simply require the user to set up the appropriate mul/div in devicetree
-	// and report when pcm_rate can't be achieved with the provided clock
+	// Configure DFSDM Audio Clock source to use I2S1 clock
+	if (cfg->pclk_len > 2) {
+		ret = clock_control_configure(clk,
+					      (clock_control_subsys_t)&cfg->pclken[2],
+					      NULL);
+		if (ret < 0) {
+			LOG_ERR("Could not configure DFSDM audio clock");
+			return -EIO;
+		}
+	}
+	// NOTE: we require the user to set up the appropriate mul/div in devicetree
+	// and we will report when pcm_rate can't be achieved with the provided clock
 
 	// Configure pins
 	ret = pinctrl_apply_state(cfg->pcfg, PINCTRL_STATE_DEFAULT);
@@ -333,34 +343,93 @@ static int dfsdm_stm32_configure(const struct device *dev, struct dmic_cfg *conf
 	}
 
 
+	// Output Clock Divider must be between 2 and 256
+	uint32_t aclk_freq = 0;
 
-	/*
-	
-	 - CLOCK configuration, divider, oversample, right shift?
+	// TODO: i should really get this audio clock phandle by name "audio"
+	if (clock_control_get_rate(DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE),
+					(clock_control_subsys_t)&cfg->pclken[2],
+					&aclk_freq) < 0) {
+		LOG_ERR("Failed call clock_control_get_rate(pclken[2])");
+		return -EIO;
+	}
 
-	 - DMA stream configuration ??
+	// I have the current audio clock frequency
+	// and the desired PCM output frequency
+	// I need to determine the PDM clock divider (thus output frequency)
+	// and the oversampling rate (decimation factor)
 
-	*/
+	uint32_t oclk_div, oclk_freq, osr = 0;
+	for (oclk_div = 2; oclk_div <= 256; oclk_div++) {
+		oclk_freq = aclk_freq / oclk_div;
+		if (oclk_freq <= max_clk && oclk_freq >= min_clk) {
+			if (oclk_freq % pdm_streams[0].pcm_rate == 0) {
+				osr = oclk_freq / pdm_streams[0].pcm_rate;
+				break;
+			}
+		}
+	}
+
+	// error if we didn't find good values
+	if (osr == 0) {
+		LOG_ERR("Failed to determine clock / oversample settings");
+		return -EINVAL;
+	}
+
+	// set values
+	for (int i = 0; i < cfg->num_channels; i++) {
+		cfg->channels[i]->chan_clk_div = oclk_div;
+		cfg->channels[i]->filt_oversample = osr;
+		// TODO: right shift according to requested bit depth ???
+	}
 
 	// TODO: this probably won't actually work like this...
 	// TODO: User might request a channel map that doesn't use all available channels
-	data->act_num_channels = pdm_chan->req_num_chan;
-	for (int i = 0; i < data->act_num_channels; i++) {
+	for (int i = 0; i < cfg->num_channels; i++) {
 		ret = dfsdm_channel_init(cfg->channels[i]);
 		if (ret != HAL_OK) {
 			LOG_ERR("dfsdm_channel_init failed");
 			return 0;
 		}
 	}
-	// TODO: link DMA to DFSDM ??
 
+	// TODO: channel map setup ???
 
+	data->act_num_channels = pdm_chan->req_num_chan;
 	data->mem_slab = pdm_streams->mem_slab;
 	data->block_size = pdm_streams->block_size;
 	data->dmic_state = DMIC_STATE_CONFIGURED;
     return 0;
 }
 
+static int start_dma()
+{
+
+	// TODO: allocate buffer(s)
+
+	// TODO: set up DMA handles
+
+	// TODO: link DMA to DFSDM
+
+	// TODO: assign dma callback function ???
+
+	return 0;
+}
+
+static int start_dfsdm()
+{
+	// TODO: call start_dma on the active channels (filters)
+
+	// TODO: then call DFSDM_RegConvStart on each of the active channels (filters)
+
+	return 0;
+}
+
+static int stop_dfsdm()
+{
+	// TODO: implement me
+	return 0;
+}
 
 static int dfsdm_stm32_trigger(const struct device *dev, enum dmic_trigger cmd)
 {
@@ -369,9 +438,11 @@ static int dfsdm_stm32_trigger(const struct device *dev, enum dmic_trigger cmd)
 	switch (cmd) {
 	case DMIC_TRIGGER_PAUSE:
 	case DMIC_TRIGGER_STOP:
+		return stop_dfsdm();
 		break;
 	case DMIC_TRIGGER_RELEASE:
 	case DMIC_TRIGGER_START:
+		return start_dfsdm();
 		break;
 	case DMIC_TRIGGER_RESET:
 	default:
@@ -379,7 +450,6 @@ static int dfsdm_stm32_trigger(const struct device *dev, enum dmic_trigger cmd)
 		return -EINVAL;
 	}
 
-    // TODO: dummy return value
     return 0;
 }
 
